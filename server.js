@@ -1,14 +1,16 @@
+const connectDB = require("./db");
+connectDB();
+
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
+const User = require('./userModel'); // MongoDB User schema
 
 const app = express();
 app.use(cors());
-app.use(express.json()); // for parsing application/json
+app.use(express.json()); // For parsing application/json
 
-// Ping Route (unchanged)
+// Ping Route
 app.get('/ping', async (req, res) => {
   const { url } = req.query;
   if (!url) return res.json({ success: false });
@@ -21,55 +23,45 @@ app.get('/ping', async (req, res) => {
   }
 });
 
-// Users JSON path
-const usersPath = path.join(__dirname, 'users.json');
-
-// Helper to read users
-function readUsers() {
-  try {
-    const data = fs.readFileSync(usersPath, 'utf-8');
-    return JSON.parse(data);
-  } catch {
-    return [];
-  }
-}
-
-// Helper to write users
-function writeUsers(users) {
-  fs.writeFileSync(usersPath, JSON.stringify(users, null, 2));
-}
-
-// Register Route
-app.post('/register', (req, res) => {
+// Register Route using MongoDB
+app.post('/register', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password)
     return res.status(400).json({ message: 'Email and password required' });
 
-  const users = readUsers();
-  const existing = users.find(user => user.email === email);
-  if (existing)
-    return res.status(400).json({ message: 'Email already registered' });
+  try {
+    const existing = await User.findOne({ email });
+    if (existing)
+      return res.status(400).json({ message: 'Email already registered' });
 
-  users.push({ email, password });
-  writeUsers(users);
+    const newUser = new User({ email, password });
+    await newUser.save();
 
-  res.json({ message: 'Account created successfully' });
+    res.json({ message: 'Account created successfully' });
+  } catch (err) {
+    console.error("Registration Error:", err);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
-// Login Route
-app.post('/login', (req, res) => {
+// Login Route using MongoDB
+app.post('/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password)
     return res.status(400).json({ message: 'Email and password required' });
 
-  const users = readUsers();
-  const match = users.find(user => user.email === email && user.password === password);
-  if (!match)
-    return res.status(401).json({ message: 'Invalid credentials' });
+  try {
+    const user = await User.findOne({ email, password });
+    if (!user)
+      return res.status(401).json({ message: 'Invalid credentials' });
 
-  res.json({ message: 'Login successful' });
+    res.json({ message: 'Login successful' });
+  } catch (err) {
+    console.error("Login Error:", err);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
 // Port
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
