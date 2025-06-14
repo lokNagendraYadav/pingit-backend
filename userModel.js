@@ -10,6 +10,12 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  monitoredUrls: [
+    {
+      url: String,
+      interval: Number,
+    },
+  ],
 });
 
 module.exports = mongoose.model('User', userSchema);
