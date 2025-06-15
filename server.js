@@ -5,6 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const User = require('./userModel'); // MongoDB User schema
+const Url = require('./urlModel');   // New model for monitored URLs
 
 const app = express();
 app.use(cors());
@@ -58,6 +59,37 @@ app.post('/login', async (req, res) => {
     res.json({ message: 'Login successful' });
   } catch (err) {
     console.error("Login Error:", err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Save monitored URL (new)
+app.post('/add-url', async (req, res) => {
+  const { email, name, url, interval } = req.body;
+  if (!email || !name || !url || !interval)
+    return res.status(400).json({ message: 'Missing fields' });
+
+  try {
+    const newEntry = new Url({ email, name, url, interval });
+    await newEntry.save();
+    res.status(200).json({ message: 'URL saved' });
+  } catch (err) {
+    console.error("Add URL Error:", err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get monitored URLs by email (new)
+app.get('/get-urls', async (req, res) => {
+  const { email } = req.query;
+  if (!email)
+    return res.status(400).json({ message: 'Email required' });
+
+  try {
+    const urls = await Url.find({ email });
+    res.status(200).json({ urls });
+  } catch (err) {
+    console.error("Get URLs Error:", err);
     res.status(500).json({ message: 'Server error' });
   }
 });
