@@ -115,16 +115,20 @@ app.delete('/delete-url', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 //delete
-// Delete monitored URL by ID
 app.delete('/delete-url', async (req, res) => {
   const { id } = req.query;
+  console.log("DELETE /delete-url called with id:", id); // ✅ Log incoming ID
+
   if (!id) return res.status(400).json({ message: 'ID required' });
 
   try {
-    await Url.findByIdAndDelete(id);
+    const result = await Url.findByIdAndDelete(id);
+    if (!result) {
+      return res.status(404).json({ message: 'Monitor not found' });
+    }
     res.status(200).json({ message: 'Monitor deleted successfully' });
   } catch (err) {
-    console.error("Delete URL Error:", err);
+    console.error("Delete URL Error:", err); // ✅ Log full error
     res.status(500).json({ message: 'Failed to delete monitor' });
   }
 });
