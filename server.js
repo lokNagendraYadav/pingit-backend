@@ -1,17 +1,29 @@
-const connectDB = require("./db");
-connectDB();
-
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const User = require('./userModel'); // MongoDB User schema
-const Url = require('./urlModel');   // New model for monitored URLs
+const mongoose = require('mongoose');
+const nodemailer = require('nodemailer');
+const User = require('./userModel');
+const Url = require('./urlModel');
+const connectDB = require('./db');
+
+connectDB();
 
 const app = express();
 app.use(cors());
-app.use(express.json()); // For parsing application/json
+app.use(express.json());
 
-// Ping Route
+// Setup Nodemailer transporter
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+// Ping route for manual ping (optional)
 app.get('/ping', async (req, res) => {
   const { url } = req.query;
   if (!url) return res.json({ success: false });
@@ -24,7 +36,7 @@ app.get('/ping', async (req, res) => {
   }
 });
 
-// Register Route using MongoDB
+// Register route
 app.post('/register', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password)
@@ -45,7 +57,7 @@ app.post('/register', async (req, res) => {
   }
 });
 
-// Login Route using MongoDB
+// Login route
 app.post('/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password)
@@ -63,7 +75,7 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// Save monitored URL (new)
+// Add monitored URL
 app.post('/add-url', async (req, res) => {
   const { email, name, url, interval } = req.body;
   if (!email || !name || !url || !interval)
@@ -72,15 +84,14 @@ app.post('/add-url', async (req, res) => {
   try {
     const newEntry = new Url({ email, name, url, interval });
     await newEntry.save();
-res.status(200).json({ message: 'URL saved', id: newEntry._id }); 
-
+    res.status(200).json({ message: 'URL saved', id: newEntry._id });
   } catch (err) {
     console.error("Add URL Error:", err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Get monitored URLs by email (new)
+// Get URLs by user
 app.get('/get-urls', async (req, res) => {
   const { email } = req.query;
   if (!email)
@@ -94,7 +105,8 @@ app.get('/get-urls', async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
-// Delete monitored URL by ID (new)
+
+// Delete URL
 app.delete('/delete-url', async (req, res) => {
   const { id } = req.query;
   if (!id)
@@ -108,28 +120,40 @@ app.delete('/delete-url', async (req, res) => {
     res.status(200).json({ message: 'Monitor deleted successfully' });
   } catch (err) {
     console.error("Delete URL Error:", err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Port
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-//delete
-app.delete('/delete-url', async (req, res) => {
-  const { id } = req.query;
-  console.log("DELETE /delete-url called with id:", id); // ✅ Log incoming ID
-
-  if (!id) return res.status(400).json({ message: 'ID required' });
-
-  try {
-    const result = await Url.findByIdAndDelete(id);
-    if (!result) {
-      return res.status(404).json({ message: 'Monitor not found' });
-    }
-    res.status(200).json({ message: 'Monitor deleted successfully' });
-  } catch (err) {
-    console.error("Delete URL Error:", err); // ✅ Log full error
     res.status(500).json({ message: 'Failed to delete monitor' });
   }
 });
+
+// Periodic Monitoring and Email Alert
+setInterval(async () => {
+  const allUrls = await Url.find();
+
+  allUrls.forEach(async (item) => {
+    const now = Date.now();
+    const intervalMs = item.interval * 60 * 1000;
+
+    // Create a unique key for last checked (in memory, can be enhanced)
+    if (!item.lastChecked || now - item.lastChecked >= intervalMs) {
+      try {
+        await axios.get(item.url, { timeout: 5000 });
+        item.lastChecked = now;
+      } catch (err) {
+        console.log(`❌ ${item.url} is offline`);
+
+        // Send email alert
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: item.email,
+          subject: `Website Down: ${item.name}`,
+          text: `Hello,\n\nYour monitored website "${item.name}" at ${item.url} appears to be offline.\n\n- PingIt`,
+        });
+
+        item.lastChecked = now;
+      }
+    }
+  });
+}, 60 * 1000); // Check every 1 min, filter using interval logic inside
+
+// Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

@@ -4,7 +4,11 @@ const urlSchema = new mongoose.Schema({
   email: String,
   name: String,
   url: String,
-  interval: Number
+  interval: Number, // in minutes
+  lastChecked: {
+    type: Date,
+    default: null
+  }
 });
 
 module.exports = mongoose.model('Url', urlSchema);
