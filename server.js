@@ -72,7 +72,8 @@ app.post('/add-url', async (req, res) => {
   try {
     const newEntry = new Url({ email, name, url, interval });
     await newEntry.save();
-    res.status(200).json({ message: 'URL saved' });
+res.status(200).json({ message: 'URL saved', id: newEntry._id }); 
+
   } catch (err) {
     console.error("Add URL Error:", err);
     res.status(500).json({ message: 'Server error' });
