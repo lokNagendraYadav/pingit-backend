@@ -125,29 +125,35 @@ app.delete('/delete-url', async (req, res) => {
 });
 
 // Periodic Monitoring and Email Alert
-// Periodic Monitoring and Email Alert
 setInterval(async () => {
   const allUrls = await Url.find();
 
   allUrls.forEach(async (item) => {
     const now = Date.now();
     const intervalMs = item.interval * 60 * 1000;
-    const cooldownMs = 6 * 60 * 60 * 1000; // 6 hours
+    const cooldownMs = 6 * 60 * 60 * 1000; // 6 hours in ms
 
+    // Check if it's time to ping this URL
     if (!item.lastChecked || now - item.lastChecked >= intervalMs) {
+      console.log(`[${new Date().toISOString()}] Pinging ${item.url} for user ${item.email}`);
+
       try {
-        await axios.get(item.url, { timeout: 5000 });
-        console.log(`✅ ${item.url} is online`);
+        const response = await axios.get(item.url, { timeout: 5000 });
+
+        if (response.status >= 200 && response.status < 400) {
+          console.log(`✅ ${item.url} is online`);
+        } else {
+          console.log(`⚠️ ${item.url} responded with status ${response.status}`);
+        }
+
         item.lastChecked = now;
         await item.save();
+
       } catch (err) {
         console.log(`❌ ${item.url} is offline or unreachable: ${err.message}`);
 
-        const canSendEmail =
-          !item.lastAlertSent || now - new Date(item.lastAlertSent).getTime() >= cooldownMs;
-
-        if (canSendEmail) {
-          // Send email alert
+        // Check if lastAlertSent is more than 6 hours ago
+        if (!item.lastAlertSent || now - new Date(item.lastAlertSent).getTime() >= cooldownMs) {
           await transporter.sendMail({
             from: process.env.EMAIL_USER,
             to: item.email,
@@ -155,7 +161,10 @@ setInterval(async () => {
             text: `Hello,\n\nYour monitored website "${item.name}" at ${item.url} appears to be offline.\n\n- PingIt`,
           });
 
-          item.lastAlertSent = new Date();
+          console.log(`📧 Alert email sent to ${item.email}`);
+          item.lastAlertSent = now;
+        } else {
+          console.log(`⏳ Skipped email for ${item.url} — still in cooldown period`);
         }
 
         item.lastChecked = now;
@@ -163,7 +172,7 @@ setInterval(async () => {
       }
     }
   });
-}, 60 * 1000); // Check every 1 minute
+}, 60 * 1000); // Check every minute
 
 // Start server
 const PORT = process.env.PORT || 3000;
