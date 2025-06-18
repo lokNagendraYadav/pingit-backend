@@ -13,7 +13,7 @@ const urlSchema = new mongoose.Schema({
 
   lastAlertSent: {
     type: Date,
-    default: null // New field for 6-hour cooldown
+    default: null
   }
 });
 
