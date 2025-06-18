@@ -132,39 +132,38 @@ setInterval(async () => {
   allUrls.forEach(async (item) => {
     const now = Date.now();
     const intervalMs = item.interval * 60 * 1000;
+    const cooldownMs = 6 * 60 * 60 * 1000; // 6 hours
 
-    // Initialize lastChecked if not present
     if (!item.lastChecked || now - item.lastChecked >= intervalMs) {
-      console.log(`[${new Date().toISOString()}] Pinging ${item.url} for user ${item.email}`);
-
       try {
-        const response = await axios.get(item.url, { timeout: 5000 });
-
-        if (response.status >= 200 && response.status < 400) {
-          console.log(`✅ ${item.url} is online`);
-        } else {
-          console.log(`⚠️ ${item.url} responded with status ${response.status}`);
-        }
-
+        await axios.get(item.url, { timeout: 5000 });
+        console.log(`✅ ${item.url} is online`);
         item.lastChecked = now;
-
+        await item.save();
       } catch (err) {
         console.log(`❌ ${item.url} is offline or unreachable: ${err.message}`);
 
-        // Send email alert
-        await transporter.sendMail({
-          from: process.env.EMAIL_USER,
-          to: item.email,
-          subject: `Website Down: ${item.name}`,
-          text: `Hello,\n\nYour monitored website "${item.name}" at ${item.url} appears to be offline.\n\n- PingIt`,
-        });
+        const canSendEmail =
+          !item.lastAlertSent || now - new Date(item.lastAlertSent).getTime() >= cooldownMs;
 
-        console.log(`📧 Alert email sent to ${item.email}`);
+        if (canSendEmail) {
+          // Send email alert
+          await transporter.sendMail({
+            from: process.env.EMAIL_USER,
+            to: item.email,
+            subject: `Website Down: ${item.name}`,
+            text: `Hello,\n\nYour monitored website "${item.name}" at ${item.url} appears to be offline.\n\n- PingIt`,
+          });
+
+          item.lastAlertSent = new Date();
+        }
+
         item.lastChecked = now;
+        await item.save();
       }
     }
   });
-}, 60 * 1000); // Run every minute; per-URL interval is respected inside
+}, 60 * 1000); // Check every 1 minute
 
 // Start server
 const PORT = process.env.PORT || 3000;
