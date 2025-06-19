@@ -175,16 +175,14 @@ setInterval(async () => {
 }, 60 * 1000); // Check every minute
 
 // Start server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-//ping itself
-const SELF_URL = "https://pingit-backend.onrender.com"; 
-setInterval(() => {
-  axios.get(SELF_URL)
-    .then(() => {
-      console.log(`[SELF-PING] ✅ Successfully pinged self to stay awake.`);
-    })
-    .catch((err) => {
-      console.error(`[SELF-PING] ❌ Failed to ping self: ${err.message}`);
-    });
-}, 14 * 60 * 1000); // every 14 minutes (Render sleeps after 15 min inactivity)
+// Self-ping frontend every 5 minutes to keep it awake
+setInterval(async () => {
+  const frontendUrl = 'https://pingit-mu.vercel.app/'; // replace with your actual frontend URL
+
+  try {
+    const res = await axios.get(frontendUrl);
+    console.log(`[SELF-PING] ✅ ${frontendUrl} is online with status ${res.status}`);
+  } catch (err) {
+    console.log(`[SELF-PING] ❌ Failed to ping frontend: ${err.message}`);
+  }
+}, 12 * 60 * 1000); // Every 5 minutes
