@@ -14,7 +14,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Setup Nodemailer transporter
+// Root route to avoid 404 on self-ping
+app.get('/', (req, res) => {
+  res.send('PingIt Backend is running');
+});
+
+// Nodemailer setup
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -23,7 +28,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Ping route for manual ping (optional)
+// Manual ping route
 app.get('/ping', async (req, res) => {
   const { url } = req.query;
   if (!url) return res.json({ success: false });
@@ -124,35 +129,32 @@ app.delete('/delete-url', async (req, res) => {
   }
 });
 
-// Periodic Monitoring and Email Alert
+// Monitoring & Email
 setInterval(async () => {
   const allUrls = await Url.find();
+  const now = Date.now();
+  const cooldownMs = 6 * 60 * 60 * 1000;
 
-  allUrls.forEach(async (item) => {
-    const now = Date.now();
+  await Promise.all(allUrls.map(async (item) => {
     const intervalMs = item.interval * 60 * 1000;
-    const cooldownMs = 6 * 60 * 60 * 1000; // 6 hours in ms
 
-    // Check if it's time to ping this URL
     if (!item.lastChecked || now - item.lastChecked >= intervalMs) {
       console.log(`[${new Date().toISOString()}] Pinging ${item.url} for user ${item.email}`);
 
       try {
-        const response = await axios.get(item.url, { timeout: 5000 });
+        const res = await axios.get(item.url, { timeout: 5000 });
 
-        if (response.status >= 200 && response.status < 400) {
+        if (res.status >= 200 && res.status < 400) {
           console.log(`✅ ${item.url} is online`);
         } else {
-          console.log(`⚠️ ${item.url} responded with status ${response.status}`);
+          console.log(`⚠️ ${item.url} responded with status ${res.status}`);
         }
 
         item.lastChecked = now;
         await item.save();
-
       } catch (err) {
         console.log(`❌ ${item.url} is offline or unreachable: ${err.message}`);
 
-        // Check if lastAlertSent is more than 6 hours ago
         if (!item.lastAlertSent || now - new Date(item.lastAlertSent).getTime() >= cooldownMs) {
           await transporter.sendMail({
             from: process.env.EMAIL_USER,
@@ -164,25 +166,29 @@ setInterval(async () => {
           console.log(`📧 Alert email sent to ${item.email}`);
           item.lastAlertSent = now;
         } else {
-          console.log(`⏳ Skipped email for ${item.url} — still in cooldown period`);
+          console.log(`⏳ Skipped email for ${item.url} — still in cooldown`);
         }
 
         item.lastChecked = now;
         await item.save();
       }
     }
-  });
-}, 60 * 1000); // Check every minute
+  }));
+}, 60 * 1000);
 
-// Start server
-// Self-ping frontend every 5 minutes to keep it awake
+// Self-ping frontend (to keep frontend alive)
 setInterval(async () => {
-  const frontendUrl = 'https://pingit-mu.vercel.app/'; // replace with your actual frontend URL
-
+  const frontendUrl = 'https://pingit-mu.vercel.app/';
   try {
     const res = await axios.get(frontendUrl);
     console.log(`[SELF-PING] ✅ ${frontendUrl} is online with status ${res.status}`);
   } catch (err) {
     console.log(`[SELF-PING] ❌ Failed to ping frontend: ${err.message}`);
   }
-}, 12 * 60 * 1000); // Every 5 minutes
+}, 12 * 60 * 1000);
+
+// Start server
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
